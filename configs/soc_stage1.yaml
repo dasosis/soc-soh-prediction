@@ -1,0 +1,62 @@
+# Stage 1 — SOC model comparison (within-dataset sanity + cross-dataset zero-shot)
+# One config drives the whole sweep. Smoke overrides live under `smoke:`.
+
+processed_dir: data/processed
+out_dir: runs/soc_stage1
+
+features: [voltage_V, current_A, temperature_C]
+target: soc
+
+window:
+  length: 100
+  stride: 10
+
+seeds: [0, 1, 2, 3, 4]
+
+# Deep-model training defaults (modest so ~200 runs stay tractable).
+deep_defaults:
+  lr: 0.001
+  batch_size: 256
+  max_epochs: 50
+  patience: 8
+  grad_clip: 1.0
+  device: auto          # cuda if available else cpu
+
+models: [linear, mlp, lstm, gru, bilstm, cnn_bilstm_attn, tcn, transformer, patchtst]
+
+# Per-model architecture overrides (merged onto deep_defaults at fit time).
+model_overrides:
+  linear:          {alpha: 1.0}
+  mlp:             {hidden: [256, 128], dropout: 0.1}
+  lstm:            {hidden: 96, num_layers: 1}
+  gru:             {hidden: 96, num_layers: 1}
+  bilstm:          {hidden: 96, num_layers: 1}
+  cnn_bilstm_attn: {filters: 16, hidden: 64, dropout: 0.1}
+  tcn:             {channels: 32, levels: 3, kernel: 3, dropout: 0.1}
+  transformer:     {d_model: 64, nhead: 4, num_layers: 2, dim_feedforward: 128, dropout: 0.1}
+  patchtst:        {patch_len: 10, patch_stride: 10, d_model: 64, nhead: 4, num_layers: 2, dim_feedforward: 128, dropout: 0.1}
+
+within_dataset:
+  test_frac: 0.2
+  val_frac: 0.2
+  split_seed: 0
+
+cross_dataset:
+  val_frac: 0.2
+  split_seed: 0
+
+experiments:
+  - {name: within_LG,  type: within, dataset: LG_HG2}
+  - {name: within_PAN, type: within, dataset: PANASONIC_18650PF}
+  - {name: cross_A_train_PAN_test_LG, type: cross, source: PANASONIC_18650PF, target: LG_HG2,
+     manifest: runs/soc_cross_dataset/fold_A_test_LG_HG2.json}
+  - {name: cross_B_train_LG_test_PAN, type: cross, source: LG_HG2, target: PANASONIC_18650PF,
+     manifest: runs/soc_cross_dataset/fold_B_test_PANASONIC_18650PF.json}
+
+# Smoke mode: 1 seed, 2 epochs, tiny window subset, full model list, all experiments.
+# Verifies the whole pipeline end-to-end on CPU in ~minutes before any GPU spend.
+smoke:
+  seeds: [0]
+  max_epochs: 2
+  max_windows_train: 1500
+  max_windows_eval: 800

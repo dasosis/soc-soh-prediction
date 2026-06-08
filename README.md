@@ -98,9 +98,52 @@ each, logged at ~10 Hz across several ambient temperatures.
 - Cold cells (n10/n20/0 degC and Trise) are kept with the correct
   `nominal_temperature_C`; below 10 degC the protocol uses reduced/no regen.
 
-## Next: Stage 1 (model wiring)
+## Stage 1 — SOC model comparison
 
-Wire models (`mlp` first, then `lstm`/`gru`/`bilstm`, `cnn_bilstm_attn`,
-`transformer`, `patchtst`, a `pinn`) behind one `fit/predict` interface and run
-the in-distribution comparison, then the headline cross-dataset generalization
-runs against the manifests in `runs/`.
+Roster behind one `fit/predict` interface (`src/battery_bench/models/`,
+registered by string): `linear` (ridge floor), `mlp`, `lstm`, `gru`, `bilstm`,
+`cnn_bilstm_attn`, `tcn`, `transformer`, `patchtst`. Input window
+`(N, window_len, 3)` for (V, I, T); target = SOC at the last timestep. Windowing
+and normalization reuse the harness; the scaler is **fit on train (source) only**
+and applied unchanged to test, preserving the measured covariate shift.
+
+Two experiment families (`configs/soc_stage1.yaml`):
+- **within-dataset** sanity (LG, Panasonic) — temperature-stratified profile holdout;
+- **cross-dataset zero-shot** (headline) — leave-one-dataset-out via `runs/soc_cross_dataset/`.
+
+```bash
+# CPU smoke (1 seed, 2 epochs, tiny window subset) — verify the pipeline (~3 min):
+python scripts/run_soc_stage1.py --config configs/soc_stage1.yaml --smoke
+# full sweep (5 seeds): writes runs/soc_stage1/{results.csv,summary.csv,diagnostics/}
+python scripts/run_soc_stage1.py --config configs/soc_stage1.yaml
+```
+
+Each run persists immediately under
+`runs/soc_stage1/<experiment>/<model>/seed_<k>/` (config/scaler/metrics, plus
+`preds.npz` for cross runs); `summary.csv` reports mean ± std over seeds (never
+best-run). Cross-dataset diagnostics (error binned by true SOC, signed bias,
+within-vs-cross gap, LG→Pan vs Pan→LG asymmetry) land in
+`runs/soc_stage1/diagnostics/`.
+
+### Running the full sweep on Colab / JarvisLabs (GPU)
+
+```bash
+git clone https://github.com/dasosis/soc-soh-prediction.git && cd soc-soh-prediction
+pip install -e . && pip install -r requirements.txt        # torch picks up the GPU build
+# bring processed tables + fold manifests (no raw data needed):
+unzip artifacts/soc_crossdataset_bundle.zip -d _bundle
+mkdir -p data/processed runs/soc_cross_dataset
+cp _bundle/processed/*.parquet data/processed/
+cp _bundle/runs/soc_cross_dataset/*.json runs/soc_cross_dataset/
+python scripts/run_soc_stage1.py --smoke           # ~3 min sanity on the GPU box
+python scripts/run_soc_stage1.py                   # full sweep
+```
+
+The full sweep is ~(#models × #seeds × #experiments) ≈ **180 runs**. Results
+persist incrementally, so a disconnect loses nothing — re-running resumes
+(completed `metrics.json` are skipped). Run the cheap models first, e.g.
+`--models linear,mlp,lstm,gru,bilstm,cnn_bilstm_attn,tcn` then
+`--models transformer,patchtst`, since the transformer family dominates runtime.
+
+> **PINN is intentionally excluded** from Stage 1: for SOC it is a proposed-method
+> / Stage-3 contribution, not a fair baseline for "compare existing methods."
