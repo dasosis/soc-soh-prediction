@@ -1,0 +1,20 @@
+# local / large assets (not part of the harness)
+claude
+legacy
+research-papers
+data/raw
+tree.txt
+
+# python / venv
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+build/
+
+# generated artifacts
+data/processed/
+runs/
+artifacts/
+*.parquet
+.DS_Store

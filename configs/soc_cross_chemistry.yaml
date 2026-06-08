@@ -1,0 +1,20 @@
+# Headline SOC generalization experiment: train on one chemistry/dataset,
+# zero-shot test on another (LG HG2 <-> Panasonic 18650PF), plus
+# leave-one-temperature-out within each.
+task: soc
+split:
+  strategy: group_holdout
+  group_col: dataset           # or 'nominal_temperature_C' for LOTO
+  holdout_values: [PANASONIC_18650PF]   # train on LG_HG2, test on Panasonic
+datasets: [LG_HG2, PANASONIC_18650PF]
+window:
+  length: 100                  # timesteps per sliding window
+  stride: 1
+features:
+  raw: [voltage_V, current_A, temperature_C]
+  standardize: true
+eval:
+  seeds: [0, 1, 2, 3, 4]
+  finetune_fractions: [0.0, 0.05, 0.10, 0.20]  # data-efficiency curve
+  metrics: [rmse, mae, max_error, mape_pct]
+models: [lstm, gru, bilstm, cnn_bilstm_attn, transformer, patchtst]

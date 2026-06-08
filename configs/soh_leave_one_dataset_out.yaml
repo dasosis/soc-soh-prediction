@@ -1,0 +1,17 @@
+# Headline SOH generalization experiment: train on all-but-one dataset,
+# test on the held-out one. Rotate over datasets.
+task: soh
+split:
+  strategy: leave_one_group_out
+  group_col: dataset           # rotate over NASA_PCOE / CALCE / OXFORD / SANDIA
+datasets: [NASA_PCOE, CALCE, OXFORD, SANDIA_SNL]
+soh:
+  reference_capacity: initial  # 'initial' (cycle-1 measured) or 'nominal'
+  eol_threshold: 0.80          # for deriving RUL; never baked into the data
+features:
+  raw: [capacity_Ah]           # extend with hi_* health indicators
+  standardize: true            # fit on TRAIN cells only
+eval:
+  seeds: [0, 1, 2, 3, 4]       # report mean +/- std, not best run
+  metrics: [rmse, mae, max_error, mape_pct, r2]
+models: [mlp, lstm, gru, bilstm, cnn_bilstm_attn, transformer, patchtst, pinn]
