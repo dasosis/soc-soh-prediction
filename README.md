@@ -148,3 +148,30 @@ persist incrementally, so a disconnect loses nothing — re-running resumes
 
 > **PINN is intentionally excluded** from Stage 1: for SOC it is a proposed-method
 > / Stage-3 contribution, not a fair baseline for "compare existing methods."
+
+## Stage 2 — fine-tuning data-efficiency ladder
+
+For each cross-dataset direction, measures how target-TEST error falls as the
+model is given a growing fraction of labeled **target** data, comparing network
+**fine-tuning** (continue-train the source net, neural models only) vs a cheap
+**affine recalibration** of the zero-shot predictions (`SOC' = a·ŷ + b`, plus a
+bias-only `a=1` variant) — decomposing the Stage-1 transfer gap into removable
+systematic bias vs genuine adaptation.
+
+The target is split once into disjoint **TEST / VAL / POOL** (fixed seed,
+constant across all fractions/methods/models); TEST is never used for fitting,
+recalibration, or early stopping. The source scaler is fit on source-train only
+and held fixed across fractions, so the curve isolates adaptation. Reuses the
+Stage-1 pipeline/models/metrics and `resolve_out_dir` unchanged.
+
+```bash
+python scripts/run_soc_stage2.py --config configs/soc_stage2.yaml --smoke   # -> runs/soc_stage2_smoke/
+python scripts/run_soc_stage2.py --config configs/soc_stage2.yaml           # full -> runs/soc_stage2/
+```
+
+Outputs (per direction): `summary.csv` (mean ± std over seeds per
+model/method/fraction) and `diagnostics/` — data-efficiency curves (target-TEST
+MAE vs fraction, fine-tune vs recalibration, within-target oracle as the dotted
+reference, fraction 0 = zero-shot anchor), a headline 80%-gap-closure table, and
+per-fraction gap-share. Same Colab recipe as Stage 1 (the bundle already carries
+the processed tables + manifests; `git pull`, then run).

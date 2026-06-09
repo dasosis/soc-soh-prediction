@@ -1,0 +1,69 @@
+# Stage 2 — fine-tuning data-efficiency ladder (target-domain adaptation).
+# Reuses Stage-1 pipeline/models/metrics + resolve_out_dir. Smoke -> runs/soc_stage2_smoke/.
+
+processed_dir: data/processed
+out_dir: runs/soc_stage2
+stage1_summary: results/stage1/summary.csv     # within-target oracle reference
+
+features: [voltage_V, current_A, temperature_C]
+target: soc
+window: {length: 100, stride: 10}
+
+seeds: [0, 1, 2, 3, 4]
+
+# Source model training (val carved from SOURCE for source early stopping).
+source_train: {val_frac: 0.2, split_seed: 0}
+
+# Target partition: FIXED across all fractions/methods/models (its own seed).
+target_split: {test_frac: 0.4, val_frac: 0.15, seed: 0}
+
+# POOL fractions (profile-level). 0.0 = zero-shot anchor.
+fractions: [0.0, 0.05, 0.10, 0.20, 0.50, 1.0]
+
+deep_defaults:
+  lr: 0.001
+  batch_size: 256
+  max_epochs: 50
+  patience: 8
+  grad_clip: 1.0
+  device: auto
+
+# Fine-tuning: neural models only (transfer winner + in-dist winner + a mid recurrent).
+finetune:
+  models: [patchtst, lstm, gru]
+  lr_factor: 0.1          # finetune lr = source_lr * lr_factor
+  max_epochs: 30
+  patience: 6
+
+# Recalibration runs for ALL of these (nearly free); 'linear' adapts only here.
+recalibrate_models: [linear, mlp, lstm, gru, bilstm, cnn_bilstm_attn, tcn, transformer, patchtst]
+recalibrate_modes: [affine, bias]
+
+# Source-model architectures (same as Stage 1).
+model_overrides:
+  linear:          {alpha: 1.0}
+  mlp:             {hidden: [256, 128], dropout: 0.1}
+  lstm:            {hidden: 96, num_layers: 1}
+  gru:             {hidden: 96, num_layers: 1}
+  bilstm:          {hidden: 96, num_layers: 1}
+  cnn_bilstm_attn: {filters: 16, hidden: 64, dropout: 0.1}
+  tcn:             {channels: 32, levels: 3, kernel: 3, dropout: 0.1}
+  transformer:     {d_model: 64, nhead: 4, num_layers: 2, dim_feedforward: 128, dropout: 0.1}
+  patchtst:        {patch_len: 10, patch_stride: 10, d_model: 64, nhead: 4, num_layers: 2, dim_feedforward: 128, dropout: 0.1}
+
+directions:
+  - {name: cross_A_train_PAN_test_LG, source: PANASONIC_18650PF, target: LG_HG2,
+     manifest: runs/soc_cross_dataset/fold_A_test_LG_HG2.json, oracle: within_LG}
+  - {name: cross_B_train_LG_test_PAN, source: LG_HG2, target: PANASONIC_18650PF,
+     manifest: runs/soc_cross_dataset/fold_B_test_PANASONIC_18650PF.json, oracle: within_PAN}
+
+# 80%-gap-closure headline metric.
+gap_closure_target: 0.8
+
+smoke:
+  seeds: [0]
+  max_epochs: 2
+  max_windows_train: 1500
+  max_windows_eval: 800
+  models: [patchtst, lstm]      # source models trained in smoke
+  fractions: [0.0, 0.1, 1.0]
