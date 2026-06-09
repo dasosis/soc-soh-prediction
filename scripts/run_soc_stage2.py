@@ -11,11 +11,16 @@ This decomposes the Stage-1 transfer gap into removable systematic bias
 (recalibration) vs genuine adaptation (fine-tuning). Reuses the Stage-1 pipeline
 / models / metrics and resolve_out_dir WITHOUT modifying any of them.
 
-The TARGET is split once into disjoint TEST / VAL / POOL (fixed seed, constant
-across all fractions/methods/models). TEST is never used for fitting,
-recalibration, or early stopping. The SOURCE scaler is fit on source-train only
-and kept FIXED across fractions, so the curve isolates adaptation, not
-renormalization.
+SHARED BUDGET: the TARGET is split once into disjoint TEST + POOL (fixed seed,
+constant across all fractions/methods/models). At each fraction f the sampled
+f*POOL profiles are the TOTAL target-label budget, shared identically by every
+method: recalibration fits on the full sample, fine-tuning carves its
+early-stopping val from INSIDE the same sample (fixed-epoch fallback when the
+sample is below `finetune.min_profiles`). There is no off-budget external VAL, so
+the x-axis fraction is the honest shared budget; total sampled profiles + windows
+are reported per fraction. TEST is never used for fitting, recalibration, or
+early stopping. The SOURCE scaler is fit on source-train only and kept FIXED
+across fractions, so the curve isolates adaptation, not renormalization.
 
 Usage:
   python scripts/run_soc_stage2.py --config configs/soc_stage2.yaml --smoke   # -> runs/soc_stage2_smoke/
@@ -134,23 +139,22 @@ def prepare_direction(direction, cfg, soc, meta, smoke):
     st = cfg["source_train"]
     source_train, source_val, _ = P.split_cross(manifest, meta, st["val_frac"], st["split_seed"])
 
-    # FIXED target partition (constant across fractions/methods/models)
+    # FIXED target partition (TEST + POOL only, constant across the ladder). There
+    # is NO external VAL: fine-tuning carves its early-stopping val from inside the
+    # sampled fraction so every method shares the same per-fraction label budget.
     ts = cfg["target_split"]
-    test_t, val_t, pool_t = FT.split_target(meta, manifest["test_profiles"],
-                                            ts["test_frac"], ts["val_frac"], ts["seed"])
+    test_t, pool_t = FT.split_target(meta, manifest["test_profiles"], ts["test_frac"], ts["seed"])
 
     scaler = P.fit_source_scaler(soc, source_train, feats)          # SOURCE-only, fixed
     Xtr, ytr, _ = P.make_split_windows(soc, source_train, scaler, feats, target, length, stride)
     Xvs, yvs, _ = P.make_split_windows(soc, source_val, scaler, feats, target, length, stride)
     Xte, yte, _ = P.make_split_windows(soc, test_t, scaler, feats, target, length, stride)
-    Xvt, yvt, _ = P.make_split_windows(soc, val_t, scaler, feats, target, length, stride)
     Xpool, ypool, gpool = P.make_split_windows(soc, pool_t, scaler, feats, target, length, stride)
 
     if smoke:
         Xtr, ytr = P.subsample_windows(Xtr, ytr, cfg["smoke"]["max_windows_train"], seed=0)
         Xvs, yvs = P.subsample_windows(Xvs, yvs, cfg["smoke"]["max_windows_eval"], seed=1)
         Xte, yte = P.subsample_windows(Xte, yte, cfg["smoke"]["max_windows_eval"], seed=2)
-        Xvt, yvt = P.subsample_windows(Xvt, yvt, cfg["smoke"]["max_windows_eval"], seed=3)
         # subsample pool windows together with their group labels
         if len(Xpool) > cfg["smoke"]["max_windows_train"]:
             rng = np.random.default_rng(4)
@@ -158,10 +162,10 @@ def prepare_direction(direction, cfg, soc, meta, smoke):
             Xpool, ypool, gpool = Xpool[keep], ypool[keep], gpool[keep]
 
     return {
-        "scaler": scaler, "splits": {"test": test_t, "val": val_t, "pool": pool_t,
+        "scaler": scaler, "splits": {"test": test_t, "pool": pool_t,
                                      "source_train": source_train, "source_val": source_val},
         "Xtr": Xtr, "ytr": ytr, "Xvs": Xvs, "yvs": yvs,
-        "Xte": Xte, "yte": yte, "Xvt": Xvt, "yvt": yvt,
+        "Xte": Xte, "yte": yte,
         "Xpool": Xpool, "ypool": ypool, "gpool": gpool,
     }
 
@@ -214,9 +218,9 @@ def run_sweep(cfg, smoke, dir_filter, model_filter, force):
         t0 = time.time()
         D = prepare_direction(direction, cfg, soc, meta, smoke)
         print(f"\n=== {dname} | source_tr/val={len(D['Xtr'])}/{len(D['Xvs'])} "
-              f"test/val/pool windows={len(D['Xte'])}/{len(D['Xvt'])}/{len(D['Xpool'])} "
-              f"| profiles test/val/pool={len(D['splits']['test'])}/{len(D['splits']['val'])}/"
-              f"{len(D['splits']['pool'])} | prep {time.time()-t0:.1f}s ===")
+              f"test/pool windows={len(D['Xte'])}/{len(D['Xpool'])} "
+              f"| profiles test/pool={len(D['splits']['test'])}/{len(D['splits']['pool'])} "
+              f"| prep {time.time()-t0:.1f}s ===")
 
         for model_name in all_models:
             methods = methods_for(model_name, cfg)
@@ -239,6 +243,9 @@ def run_sweep(cfg, smoke, dir_filter, model_filter, force):
                 is_neural = hasattr(src, "module") and src.module is not None
 
                 for frac in fractions:
+                    # The sampled fraction is the TOTAL target-label budget at f,
+                    # shared identically by every method. recal fits on all of it;
+                    # finetune reserves an internal val carved from the same sample.
                     sampled = FT.sample_pool(D["splits"]["pool"], frac, seed)
                     mask = np.isin(D["gpool"], sampled) if sampled else np.zeros(len(D["gpool"]), bool)
                     Xp, yp = D["Xpool"][mask], D["ypool"][mask]
@@ -249,27 +256,45 @@ def run_sweep(cfg, smoke, dir_filter, model_filter, force):
                             continue
                         mp.parent.mkdir(parents=True, exist_ok=True)
                         a, b, tt = 1.0, 0.0, 0.0
+                        extra = {}
 
                         if method.startswith("recal_"):
                             mode = method.split("_", 1)[1]
                             pool_pred = src.predict(Xp) if len(Xp) else np.empty(0)
                             y_hat, (a, b) = FT.recalibrate_test(pool_pred, yp, yzs_test, mode)
                         elif method == "finetune":
-                            if frac == 0 or len(Xp) == 0 or not is_neural:
+                            if frac == 0 or len(sampled) == 0 or not is_neural:
                                 y_hat = yzs_test                      # anchor = zero-shot
                             else:
-                                ft_mod = copy.deepcopy(src.module)
-                                t2 = time.time()
-                                continue_train(ft_mod, src.device, Xp, yp, D["Xvt"], D["yvt"],
-                                               lr=run_cfg["lr"] * ft_cfg["lr_factor"],
-                                               max_epochs=(cfg["smoke"]["max_epochs"] if smoke
-                                                           else ft_cfg["max_epochs"]),
-                                               patience=ft_cfg["patience"],
-                                               batch=int(run_cfg.get("batch_size", 256)),
-                                               clip=float(run_cfg.get("grad_clip", 1.0)),
-                                               seed=int(seed))
-                                tt = time.time() - t2
-                                y_hat = _predict_module(ft_mod, src.device, D["Xte"])
+                                # carve early-stop val from INSIDE the sampled budget
+                                ft_tr, ft_val, do_es = FT.split_finetune_train_val(
+                                    sampled, int(seed), float(frac),
+                                    val_frac=ft_cfg["internal_val_frac"],
+                                    min_profiles=ft_cfg["min_profiles"])
+                                Xtr_ft = D["Xpool"][np.isin(D["gpool"], ft_tr)]
+                                ytr_ft = D["ypool"][np.isin(D["gpool"], ft_tr)]
+                                if do_es and ft_val:
+                                    vm = np.isin(D["gpool"], ft_val)
+                                    Xv_ft, yv_ft = D["Xpool"][vm], D["ypool"][vm]
+                                    ep = cfg["smoke"]["max_epochs"] if smoke else ft_cfg["max_epochs"]
+                                else:
+                                    Xv_ft, yv_ft = None, None        # fixed-epoch path
+                                    ep = cfg["smoke"]["max_epochs"] if smoke else ft_cfg["fixed_epochs"]
+                                extra = {"ft_train_profiles": len(ft_tr),
+                                         "ft_val_profiles": len(ft_val), "ft_early_stop": bool(do_es)}
+                                if len(Xtr_ft) == 0:                  # no windows (smoke subsample) -> anchor
+                                    y_hat = yzs_test
+                                else:
+                                    ft_mod = copy.deepcopy(src.module)
+                                    t2 = time.time()
+                                    continue_train(ft_mod, src.device, Xtr_ft, ytr_ft, Xv_ft, yv_ft,
+                                                   lr=run_cfg["lr"] * ft_cfg["lr_factor"], max_epochs=ep,
+                                                   patience=ft_cfg["patience"],
+                                                   batch=int(run_cfg.get("batch_size", 256)),
+                                                   clip=float(run_cfg.get("grad_clip", 1.0)),
+                                                   seed=int(seed))
+                                    tt = time.time() - t2
+                                    y_hat = _predict_module(ft_mod, src.device, D["Xte"])
                         else:
                             continue
 
@@ -281,7 +306,7 @@ def run_sweep(cfg, smoke, dir_filter, model_filter, force):
                                "fraction": float(frac), "seed": int(seed),
                                "n_pool_profiles": len(sampled), "n_pool_windows": int(len(Xp)),
                                "n_test_windows": int(len(D["Xte"])), "signed_bias": signed_bias,
-                               "recal_a": a, "recal_b": b,
+                               "recal_a": a, "recal_b": b, **extra,
                                "train_time_s": round(src_time if frac == 0 else tt, 3),
                                "device": device, "smoke": bool(smoke), **rep}
                         mp.write_text(json.dumps(rec, indent=2))

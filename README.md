@@ -158,11 +158,17 @@ model is given a growing fraction of labeled **target** data, comparing network
 bias-only `a=1` variant) — decomposing the Stage-1 transfer gap into removable
 systematic bias vs genuine adaptation.
 
-The target is split once into disjoint **TEST / VAL / POOL** (fixed seed,
-constant across all fractions/methods/models); TEST is never used for fitting,
-recalibration, or early stopping. The source scaler is fit on source-train only
-and held fixed across fractions, so the curve isolates adaptation. Reuses the
-Stage-1 pipeline/models/metrics and `resolve_out_dir` unchanged.
+**Shared label budget.** The target is split once into disjoint **TEST + POOL**
+(fixed seed, constant across all fractions/methods/models). At each fraction the
+sampled `f·POOL` profiles are the *total* target-label budget at `f`, shared
+identically by every method — recalibration fits on the full sample, fine-tuning
+carves its early-stopping val from *inside* that same sample (fixed-epoch
+fallback when the sample is too small). There is no off-budget external VAL, so
+the x-axis is the honest budget (sampled profiles + windows are reported per
+fraction). TEST is never used for fitting, recalibration, or early stopping. The
+source scaler is fit on source-train only and held fixed across fractions, so the
+curve isolates adaptation. Reuses the Stage-1 pipeline/models/metrics and
+`resolve_out_dir` unchanged.
 
 ```bash
 python scripts/run_soc_stage2.py --config configs/soc_stage2.yaml --smoke   # -> runs/soc_stage2_smoke/
