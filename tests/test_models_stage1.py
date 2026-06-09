@@ -1,6 +1,9 @@
 """Stage 1 model-layer tests: every registered model fits+predicts the right
 shape on synthetic windows, and the cross-dataset scaler is fit on source only.
 """
+import importlib.util
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -9,6 +12,30 @@ from battery_bench import soc_pipeline as P
 from battery_bench.models import build_model, list_models
 
 FEATS = ["voltage_V", "current_A", "temperature_C"]
+
+
+def _load_runner():
+    spec = importlib.util.spec_from_file_location(
+        "run_soc_stage1", Path("scripts/run_soc_stage1.py").resolve())
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_resolve_out_dir_smoke_isolated_from_full():
+    runner = _load_runner()
+    cfg = {"out_dir": "runs/soc_stage1", "smoke": {}}
+    full = runner.resolve_out_dir(cfg, smoke=False)
+    smoke = runner.resolve_out_dir(cfg, smoke=True)
+    assert full == Path("runs/soc_stage1")
+    assert full != smoke
+    # smoke dir must not be the full dir, nor a parent/child that would collide
+    fp, sp = full.resolve(), smoke.resolve()
+    assert fp != sp
+    assert sp not in fp.parents and fp not in sp.parents
+    # explicit override is honored
+    cfg2 = {"out_dir": "runs/soc_stage1", "smoke": {"out_dir": "runs/custom_smoke"}}
+    assert runner.resolve_out_dir(cfg2, smoke=True) == Path("runs/custom_smoke")
 
 
 @pytest.fixture

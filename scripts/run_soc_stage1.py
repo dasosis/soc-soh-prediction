@@ -13,9 +13,13 @@ is also appended to out_dir/results.csv as it finishes, so a Colab disconnect
 never loses completed work; summary.csv + diagnostics are recomputed from the
 per-run files at the end.
 
+--smoke writes to a SEPARATE output dir ('<out_dir>_smoke', i.e.
+runs/soc_stage1_smoke/) so undertrained smoke runs never collide with — or get
+resumed into — the full sweep under cfg['out_dir'] (runs/soc_stage1/).
+
 Usage:
-  python scripts/run_soc_stage1.py --config configs/soc_stage1.yaml --smoke
-  python scripts/run_soc_stage1.py --config configs/soc_stage1.yaml          # full
+  python scripts/run_soc_stage1.py --config configs/soc_stage1.yaml --smoke   # -> runs/soc_stage1_smoke/
+  python scripts/run_soc_stage1.py --config configs/soc_stage1.yaml           # full -> runs/soc_stage1/
   python scripts/run_soc_stage1.py --config ... --models linear,lstm --experiments within_LG
 """
 from __future__ import annotations
@@ -48,6 +52,18 @@ RESULTS_COLUMNS = ["experiment", "model", "seed", "rmse", "mae", "max_error",
 def load_config(path):
     with open(path) as f:
         return yaml.safe_load(f)
+
+
+def resolve_out_dir(cfg, smoke: bool) -> Path:
+    """Output directory for this run. The full sweep writes to cfg['out_dir'];
+    smoke runs write to a SEPARATE sibling dir so undertrained smoke runs can
+    never be picked up by the full sweep's resume logic. Honors an optional
+    cfg['smoke']['out_dir'] override, else uses '<out_dir>_smoke'."""
+    base = Path(cfg["out_dir"])
+    if not smoke:
+        return base
+    override = (cfg.get("smoke") or {}).get("out_dir")
+    return Path(override) if override else base.with_name(base.name + "_smoke")
 
 
 def build_run_cfg(cfg, model_name, seed, smoke):
@@ -102,7 +118,7 @@ def append_result(results_csv: Path, row: dict):
 
 # --------------------------------------------------------------------------
 def run_sweep(cfg, smoke, model_filter, exp_filter, force):
-    out_dir = Path(cfg["out_dir"])
+    out_dir = resolve_out_dir(cfg, smoke)
     out_dir.mkdir(parents=True, exist_ok=True)
     results_csv = out_dir / "results.csv"
 
@@ -153,6 +169,7 @@ def run_sweep(cfg, smoke, model_filter, exp_filter, force):
                     {"experiment": exp["name"], "type": exp["type"], "model": model_name,
                      "seed": int(seed), "n_params": model.n_params,
                      "train_time_s": train_time, "device": device,
+                     "smoke": bool(smoke), "max_epochs": int(run_cfg.get("max_epochs", 0)),
                      "n_train": int(len(Xtr)), "n_test": int(len(Xte)), **rep}, indent=2))
                 if exp["type"] == "cross":
                     np.savez_compressed(seed_dir / "preds.npz",
@@ -296,7 +313,7 @@ def main():
     cfg = load_config(args.config)
     model_filter = [s for s in args.models.split(",") if s]
     exp_filter = [s for s in args.experiments.split(",") if s]
-    out_dir = Path(cfg["out_dir"])
+    out_dir = resolve_out_dir(cfg, args.smoke)
 
     if not args.diagnostics_only:
         out_dir = run_sweep(cfg, args.smoke, model_filter, exp_filter, args.force)

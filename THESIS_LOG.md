@@ -19,3 +19,18 @@ Grounded in EDA only (input + label distributions). No model trained yet.
    closing that needs chemistry-aware features or OCV correction.
 
 To be revisited against Stage-1 numbers.
+
+## 2026-06-08 — Results vs pre-registered predictions (Stage-1, clean 5-seed)
+
+#1 LG→Pan worst: FALSIFIED. Reversed — Pan→LG is the harder direction for 8/9 models
+   (gap-asymmetry ratio <1; only PatchTST matches the predicted direction).
+#2 Cross ≫ within (≥1.5–2×): CONFIRMED, 5–7× for deep models.
+#3 Error localized at low SOC: PARTIAL / mislocated. Dominant pattern is a systematic
+   SOC-dependent tilt peaking at HIGH SOC (~0.8–0.9), not a low-SOC spike. Low-SOC
+   extrapolation penalty is real but secondary (clearest in the unbounded linear baseline).
+#4 Systematic bias not variance: CONFIRMED, strongly. Directional, opposite-signed by
+   transfer direction (PAN→LG +; LG→PAN −), consistent across roster, smallest for PatchTST
+   — the chemistry V–SOC offset fingerprint from EDA.
+
+Net mechanism: zero-shot failure is a chemistry-driven systematic bias, not variance.
+PatchTST transfers best because it carries the least of it.

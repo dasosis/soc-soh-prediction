@@ -113,6 +113,7 @@ Two experiment families (`configs/soc_stage1.yaml`):
 
 ```bash
 # CPU smoke (1 seed, 2 epochs, tiny window subset) — verify the pipeline (~3 min):
+# writes to its OWN dir (runs/soc_stage1_smoke/) so it never contaminates the full sweep.
 python scripts/run_soc_stage1.py --config configs/soc_stage1.yaml --smoke
 # full sweep (5 seeds): writes runs/soc_stage1/{results.csv,summary.csv,diagnostics/}
 python scripts/run_soc_stage1.py --config configs/soc_stage1.yaml
