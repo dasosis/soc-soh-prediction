@@ -82,3 +82,15 @@ S3-4: Beats a marginal-alignment foil (CORAL / target input standardization) —
       gap #5 (conditional/chemistry-structured, not a marginal input shift).
 S3-5: cross_A (target=LG) benefits less than cross_B (target=Panasonic), with residual
       error concentrated at low SOC, due to the truncated LG OCV (V>2.80).
+
+## Stage 3 RESULTS — predictions largely FALSIFIED (honest negative + one positive sub-finding)
+- S3-1 FALSIFIED: OCV-mean ~neutral vs zero-shot, nowhere near S2 recal plateau.
+- S3-2 FALSIFIED: bias not zeroed — loaded V≠OCV (IR drop) is the limiter.
+- S3-3 FALSIFIED placement: OCV sits between zero-shot and recal, not recal↔oracle.
+- S3-4 PARTIAL: OCV beats CORAL on patchtst/average; CORAL wrecks patchtst (0.058→0.121) — supports #5.
+- S3-5 FALSIFIED (pre-warned): cross_A (target=LG) benefits MOST; LG truncation negligible (0.93%).
+- POSITIVE: discharge-leg OCV (C3) consistently beats zero-shot both directions + cuts bias,
+  confirming the NCA-hysteresis mechanism. Still short of supervised recalibration.
+- CONCLUSION: naive OCV-referencing of loaded voltage gives only a small label-free gain;
+  uncorrected IR/polarization is the limiter. A few target labels (recal/fine-tune) remain
+  necessary for chemistry transfer. Optional fix: IR-correct V via HPPC R0 before the OCV inverse.
