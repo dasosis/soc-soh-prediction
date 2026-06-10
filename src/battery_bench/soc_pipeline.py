@@ -79,12 +79,24 @@ def fit_source_scaler(soc: pd.DataFrame, train_pids, features) -> Standardizer:
     return Standardizer(list(features)).fit(train_rows)
 
 
-def make_split_windows(soc, pids, scaler, features, target, length, stride):
+def make_split_windows(soc, pids, scaler, features, target, length, stride,
+                       add_ocv=False, ocv_chem=None):
     """Normalize (with the already-fit scaler) then window one split. Windows
-    never cross a profile_id (enforced by the harness windower)."""
+    never cross a profile_id (enforced by the harness windower).
+
+    Stage-3 (default OFF): with ``add_ocv=True``/``ocv_chem`` set, an OCV-implied
+    SOC channel is computed from the RAW voltage BEFORE scaling and appended as a
+    4th, unscaled channel (SOC is already in [0,1]); the V/I/T channels are still
+    standardized. Pass the SOURCE chemistry for train/val and TARGET for test."""
     df = soc[soc["profile_id"].isin(set(pids))]
-    df = scaler.transform(df)
-    X, y, groups = make_windows(df, list(features), target, length=length,
+    feat_cols = list(features)
+    if add_ocv:
+        from .preprocess.ocv_feature import soc_from_voltage
+        soc_ocv, _ = soc_from_voltage(df["voltage_V"].to_numpy(), ocv_chem)   # RAW volts
+        df = df.assign(_soc_ocv=np.asarray(soc_ocv, dtype=float))
+        feat_cols = feat_cols + ["_soc_ocv"]                                  # unscaled
+    df = scaler.transform(df)                                                 # scales V/I/T only
+    X, y, groups = make_windows(df, feat_cols, target, length=length,
                                 stride=stride, group_col="profile_id")
     return X, y, groups
 

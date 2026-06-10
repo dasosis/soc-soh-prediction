@@ -17,14 +17,30 @@ def make_windows(
     length: int,
     stride: int = 1,
     group_col: str = "profile_id",
+    add_ocv_channel: bool = False,
+    ocv_chem: str | None = None,
+    voltage_col: str = "voltage_V",
 ):
     """Return (X, y, groups):
       X      : (N, length, F) float32
       y      : (N,)           float32, label at the LAST step of each window
       groups : (N,)           the group_col value each window came from
+
+    Stage-3 OCV feature (OFF by default — default path is byte-identical to
+    before): with ``add_ocv_channel=True`` and ``ocv_chem`` set, an OCV-implied
+    SOC channel (from the chemistry's OCV table, see preprocess.ocv_feature) is
+    computed elementwise from ``voltage_col`` and appended as the last channel,
+    making X (N, length, F+1). NOTE: ``voltage_col`` must hold RAW volts for the
+    OCV lookup to be meaningful (the SOC pipeline computes it before scaling).
     """
     if length < 1:
         raise ValueError("length must be >= 1")
+    feature_cols = list(feature_cols)
+    if add_ocv_channel:
+        from .ocv_feature import soc_from_voltage
+        soc_ocv, _ = soc_from_voltage(df[voltage_col].to_numpy(), ocv_chem)
+        df = df.assign(__soc_ocv=np.asarray(soc_ocv, dtype=float))
+        feature_cols = feature_cols + ["__soc_ocv"]
     X_list, y_list, g_list = [], [], []
     for gval, grp in df.groupby(group_col, sort=False):
         feats = grp[feature_cols].to_numpy(dtype=np.float32)

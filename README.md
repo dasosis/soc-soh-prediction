@@ -181,3 +181,25 @@ MAE vs fraction, fine-tune vs recalibration, within-target oracle as the dotted
 reference, fraction 0 = zero-shot anchor), a headline 80%-gap-closure table, and
 per-fraction gap-share. Same Colab recipe as Stage 1 (the bundle already carries
 the processed tables + manifests; `git pull`, then run).
+
+## Stage 3 — OCV-informed feature (in progress)
+
+A label-free, chemistry-aware feature: append `SOC_ocv = clamp(OCV_chem⁻¹(V))` as a
+4th input channel to (V, I, T), using each chemistry's measured 25 °C C/20 OCV(SOC)
+curve — the source chemistry's at train, the target's at test. The same voltage
+implies a *different* SOC on NMC vs NCA, which is the cross-dataset gap Stage 3
+targets, and it needs zero labeled target drive cycles.
+
+- `scripts/build_ocv_tables.py` → `data/ocv/ocv_{lg,pan}_25C.csv` (soc, ocv_V):
+  coulomb-count SOC on the C/20 file, average the discharge+charge legs
+  (hysteresis-corrected), smooth, assert monotone.
+- `preprocess/ocv_feature.py`: `load_ocv_table(chem)`, `soc_from_voltage(V, chem)`
+  (monotone inverse, clamped to `[soc_floor, 1.0]` with a clamped-mask).
+- `preprocess/window.make_windows(..., add_ocv_channel=True, ocv_chem=...)` appends
+  the channel (OFF by default — Stage-1/2 behavior is byte-identical); the SOC
+  pipeline computes it from **raw** voltage before scaling.
+
+Validation (`tests/test_ocv_feature.py`): recovery MAE on each chemistry's own C/20
+file (LG 0.015, Panasonic 0.055 — NCA's larger hysteresis), monotone inverse +
+clamping, chemistry separation, and window wiring. The full S3 sweep is not run yet
+(predictions pre-registered in `THESIS_LOG.md`).
