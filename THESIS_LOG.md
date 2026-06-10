@@ -64,3 +64,21 @@ PatchTST transfers best because it carries the least of it.
 - RETRACTED: prior "recal worse than zero-shot at 5%, esp LG→PAN" — a small-pool artifact.
   Corrected: low-fraction recal is high-variance but ~neutral-to-slightly-helpful; still plateaus.
 - Regime: ≤~3 cycles both unstable (recal more stable, caps low); ≥~5 cycles fine-tune wins to oracle.
+
+## 2026-06-10 — Stage 3 pre-registration (OCV-informed features; logged before any S3 results)
+
+Method: append SOC_ocv = clamp(OCV_chem^{-1}(V)) as a 4th input channel to (V,I,T);
+source chemistry's measured 25C C/20 OCV curve at train, target chemistry's at test.
+Label-free: one C/20 characterization per chemistry, ZERO labeled target drive cycles.
+OCV source: Panasonic full-range (4.20-2.50V); LG truncated at 2.80V (clamps low-SOC).
+
+S3-1: OCV-zero-shot beats BOTH plain zero-shot (S1) and supervised recalibration (S2),
+      both directions, with no labeled target drive cycles.
+S3-2: Drives directional chemistry bias toward ~0 by construction (per-voltage, not just
+      the global shift recal removed).
+S3-3: Does NOT reach the supervised fine-tune oracle — residual IR/polarization mismatch
+      remains; lands between recal and few-label fine-tune.
+S3-4: Beats a marginal-alignment foil (CORAL / target input standardization) — confirms
+      gap #5 (conditional/chemistry-structured, not a marginal input shift).
+S3-5: cross_A (target=LG) benefits less than cross_B (target=Panasonic), with residual
+      error concentrated at low SOC, due to the truncated LG OCV (V>2.80).
