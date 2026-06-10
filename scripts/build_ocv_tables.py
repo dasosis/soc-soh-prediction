@@ -46,7 +46,21 @@ def _leg_to_grid(soc_leg, v_leg):
     return out
 
 
+def _finalize(ocv_on_grid, name):
+    """Drop NaN, lightly smooth, assert monotone-increasing; return (soc, ocv)."""
+    valid = ~np.isnan(ocv_on_grid)
+    soc_t, ocv_t = SOC_GRID[valid], ocv_on_grid[valid]
+    win = min(11, len(ocv_t) - (1 - len(ocv_t) % 2))     # odd window <= len
+    ocv_s = savgol_filter(ocv_t, win, 2) if win >= 5 else ocv_t
+    d = np.diff(ocv_s)
+    if np.any(d < -1e-3):
+        i = int(np.argmin(d))
+        raise ValueError(f"[{name}] OCV not monotone near SOC={soc_t[i]:.3f} (dV={d[i]:.4f})")
+    return soc_t, ocv_s
+
+
 def build_table(t, V, I, rated, name):
+    """Return (mean_df, dischg_df): hysteresis-averaged OCV and discharge-leg-only OCV."""
     soc = _coulomb_soc(t, I, rated)
     turn = int(np.argmin(soc))                           # discharge -> charge turning point
     dis = _leg_to_grid(soc[:turn + 1], V[:turn + 1])
@@ -64,27 +78,20 @@ def build_table(t, V, I, rated, name):
     dis_adj = dis + gap_filled / 2.0
     cha_adj = cha - gap_filled / 2.0
     with warnings.catch_warnings():
-        warnings.simplefilter("ignore", RuntimeWarning)   # all-NaN columns -> dropped below
-        ocv_grid = np.nanmean(np.vstack([dis_adj, cha_adj]), axis=0)
+        warnings.simplefilter("ignore", RuntimeWarning)   # all-NaN columns -> dropped in _finalize
+        ocv_mean = np.nanmean(np.vstack([dis_adj, cha_adj]), axis=0)
     half = (float(np.nanmedian(gap[both])) / 2.0) if both.any() else 0.0
-    valid = ~np.isnan(ocv_grid)
-    soc_t, ocv_t = SOC_GRID[valid], ocv_grid[valid]
 
-    win = min(11, len(ocv_t) - (1 - len(ocv_t) % 2))     # odd window <= len
-    if win >= 5:
-        ocv_s = savgol_filter(ocv_t, win, 2)
-    else:
-        ocv_s = ocv_t
+    soc_m, ocv_m = _finalize(ocv_mean, name + " mean")
+    soc_d, ocv_d = _finalize(dis, name + " dischg")      # discharge-leg only (NCA-hysteresis ablation)
 
-    d = np.diff(ocv_s)
-    if np.any(d < -1e-3):
-        i = int(np.argmin(d))
-        raise ValueError(f"[{name}] OCV not monotone-increasing near SOC={soc_t[i]:.3f} "
-                         f"(dV={d[i]:.4f}); legs/smoothing wrong")
-
-    print(f"[{name}] SOC {soc_t[0]:.3f}..{soc_t[-1]:.3f} | OCV {ocv_s[0]:.3f}..{ocv_s[-1]:.3f} V | "
-          f"{len(soc_t)} pts | half-hyst {half*1000:.1f} mV | turn SOC={soc[turn]:.3f} (n={len(t)})")
-    return pd.DataFrame({"soc": np.round(soc_t, 5), "ocv_V": np.round(ocv_s, 5)})
+    print(f"[{name}] mean SOC {soc_m[0]:.3f}..{soc_m[-1]:.3f} OCV {ocv_m[0]:.3f}..{ocv_m[-1]:.3f}V "
+          f"({len(soc_m)} pts, half-hyst {half*1000:.1f} mV) | "
+          f"dischg SOC {soc_d[0]:.3f}..{soc_d[-1]:.3f} OCV {ocv_d[0]:.3f}..{ocv_d[-1]:.3f}V "
+          f"({len(soc_d)} pts) | turn SOC={soc[turn]:.3f}")
+    mean_df = pd.DataFrame({"soc": np.round(soc_m, 5), "ocv_V": np.round(ocv_m, 5)})
+    dischg_df = pd.DataFrame({"soc": np.round(soc_d, 5), "ocv_V": np.round(ocv_d, 5)})
+    return mean_df, dischg_df
 
 
 def main():
@@ -92,16 +99,17 @@ def main():
 
     lg_file = next(Path("data/raw/LG18650HG2/25degC").glob("*C20DisCh*.csv"))
     d = LgHg2Loader("data/raw/LG18650HG2")._read_csv(lg_file)
-    lg = build_table(d["time_s"], d["voltage_V"], d["current_A"], 3.0, "LG_HG2")
-    lg.to_csv(OUT / "ocv_lg_25C.csv", index=False)
+    lg_mean, lg_dis = build_table(d["time_s"], d["voltage_V"], d["current_A"], 3.0, "LG_HG2")
+    lg_mean.to_csv(OUT / "ocv_lg_25C.csv", index=False)
+    lg_dis.to_csv(OUT / "ocv_lg_25C_dischg.csv", index=False)
 
     pan_file = next(Path("data/raw/Panasonic-18650PF").rglob("*C20 OCV*25dC*.mat"))
     d = Panasonic18650PFLoader._read_mat(pan_file)
-    pan = build_table(d["time_s"], d["voltage_V"], d["current_A"], 2.9, "PANASONIC")
-    pan.to_csv(OUT / "ocv_pan_25C.csv", index=False)
+    pan_mean, pan_dis = build_table(d["time_s"], d["voltage_V"], d["current_A"], 2.9, "PANASONIC")
+    pan_mean.to_csv(OUT / "ocv_pan_25C.csv", index=False)
+    pan_dis.to_csv(OUT / "ocv_pan_25C_dischg.csv", index=False)
 
-    print(f"\nwrote {OUT/'ocv_lg_25C.csv'} and {OUT/'ocv_pan_25C.csv'}")
-    print("source files:")
+    print(f"\nwrote mean + dischg tables to {OUT}/")
     print(f"  LG  : {lg_file}")
     print(f"  PAN : {pan_file}")
     return 0

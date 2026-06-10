@@ -1,0 +1,49 @@
+# Stage 3 — OCV-informed feature full sweep (label-free domain adaptation).
+# Reuses the S1/S2 pipeline/models/metrics + resolve_out_dir. Smoke -> runs/soc_stage3_smoke/.
+# Test split = the WHOLE target (same as Stage 1) so C1 reproduces S1 exactly.
+
+processed_dir: data/processed
+out_dir: runs/soc_stage3
+stage1_summary: results/stage1/summary.csv
+stage2_summary: results/stage2/summary.csv
+
+features: [voltage_V, current_A, temperature_C]
+target: soc
+window: {length: 100, stride: 10}
+seeds: [0, 1, 2, 3, 4]
+
+# Source-model train/val carve — MUST match Stage 1 cross_dataset so C1 == S1.
+source_train: {val_frac: 0.2, split_seed: 0}
+
+deep_defaults:
+  lr: 0.001
+  batch_size: 256
+  max_epochs: 50
+  patience: 8
+  grad_clip: 1.0
+  device: auto
+
+models: [linear, mlp, lstm, gru, patchtst]
+model_overrides:
+  linear:   {alpha: 1.0}
+  mlp:      {hidden: [256, 128], dropout: 0.1}
+  lstm:     {hidden: 96, num_layers: 1}
+  gru:      {hidden: 96, num_layers: 1}
+  patchtst: {patch_len: 10, patch_stride: 10, d_model: 64, nhead: 4, num_layers: 2, dim_feedforward: 128, dropout: 0.1}
+
+# All label-free. OCV channel is UNSCALED (do not standardize a domain-shifting feature).
+conditions: [C1_baseline, C2_ocv_mean, C3_ocv_dischg, C4_coral]
+
+coral: {eps: 1.0e-5}
+
+directions:
+  - {name: cross_A_train_PAN_test_LG, source_chem: PANASONIC_18650PF, target_chem: LG_HG2,
+     manifest: runs/soc_cross_dataset/fold_A_test_LG_HG2.json, oracle_exp: within_LG}
+  - {name: cross_B_train_LG_test_PAN, source_chem: LG_HG2, target_chem: PANASONIC_18650PF,
+     manifest: runs/soc_cross_dataset/fold_B_test_PANASONIC_18650PF.json, oracle_exp: within_PAN}
+
+smoke:
+  seeds: [0]
+  max_epochs: 2
+  max_windows_train: 1500
+  max_windows_eval: 800

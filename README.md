@@ -190,16 +190,35 @@ curve — the source chemistry's at train, the target's at test. The same voltag
 implies a *different* SOC on NMC vs NCA, which is the cross-dataset gap Stage 3
 targets, and it needs zero labeled target drive cycles.
 
-- `scripts/build_ocv_tables.py` → `data/ocv/ocv_{lg,pan}_25C.csv` (soc, ocv_V):
-  coulomb-count SOC on the C/20 file, average the discharge+charge legs
-  (hysteresis-corrected), smooth, assert monotone.
+- `scripts/build_ocv_tables.py` → `data/ocv/ocv_{lg,pan}_25C.csv` (hysteresis-averaged)
+  and `..._dischg.csv` (discharge-leg-only): coulomb-count SOC on the C/20 file,
+  smooth, assert monotone.
 - `preprocess/ocv_feature.py`: `load_ocv_table(chem)`, `soc_from_voltage(V, chem)`
-  (monotone inverse, clamped to `[soc_floor, 1.0]` with a clamped-mask).
+  (monotone inverse, clamped to `[soc_floor, 1.0]` with a clamped-mask). A `:dischg`
+  suffix on `chem` selects the discharge-leg table.
 - `preprocess/window.make_windows(..., add_ocv_channel=True, ocv_chem=...)` appends
   the channel (OFF by default — Stage-1/2 behavior is byte-identical); the SOC
-  pipeline computes it from **raw** voltage before scaling.
+  pipeline computes it from **raw** voltage before scaling and leaves it unscaled.
 
-Validation (`tests/test_ocv_feature.py`): recovery MAE on each chemistry's own C/20
-file (LG 0.015, Panasonic 0.055 — NCA's larger hysteresis), monotone inverse +
-clamping, chemistry separation, and window wiring. The full S3 sweep is not run yet
-(predictions pre-registered in `THESIS_LOG.md`).
+The sweep (`scripts/run_soc_stage3.py`, `configs/soc_stage3.yaml`; 2 directions, 5
+models, seeds 0–4) evaluates four label-free conditions on the **same whole-target
+test split as Stage 1** (C1 reproduces S1 exactly — verified via `--verify-c1`):
+
+| condition | input | role |
+|---|---|---|
+| C1 baseline | (V,I,T) | zero-shot anchor (= S1) |
+| C2 ocv_mean | + SOC_ocv (mean table) | **headline** |
+| C3 ocv_dischg | + SOC_ocv (discharge table) | NCA-hysteresis ablation |
+| C4 coral | (V,I,T) + CORAL→target inputs | marginal-alignment foil |
+
+```bash
+python scripts/run_soc_stage3.py --config configs/soc_stage3.yaml --smoke   # -> runs/soc_stage3_smoke/
+python scripts/run_soc_stage3.py --config configs/soc_stage3.yaml           # full -> runs/soc_stage3/ (Colab GPU)
+```
+
+Diagnostics (`diagnostics/`): `summary`, `bias_by_condition` (S3-2), `error_by_soc`
+(S3-5 low-SOC), `clamp_rate`, and `gapclose` (the money table — C1/C2/C3/C4 vs the
+S2 recal plateau and fine-tune oracle, with `pct_gap_closed`). Validation
+(`tests/test_ocv_feature.py`): recovery MAE (LG 0.015, Panasonic 0.055), monotone
+inverse + clamping, chemistry separation, window wiring. Smoke verified end-to-end;
+the full 5-seed sweep runs on Colab. Predictions pre-registered in `THESIS_LOG.md`.

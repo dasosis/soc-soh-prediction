@@ -16,7 +16,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-_FILES = {"lg": "ocv_lg_25C.csv", "pan": "ocv_pan_25C.csv"}
 _DIRS = [Path(__file__).resolve().parents[3] / "data" / "ocv", Path("data/ocv")]
 _CACHE: dict[str, tuple[np.ndarray, np.ndarray]] = {}
 
@@ -30,25 +29,31 @@ def _norm_chem(chem: str) -> str:
     raise ValueError(f"unknown chemistry '{chem}' (expected LG_HG2/NMC or PANASONIC_18650PF/NCA)")
 
 
-def _table_path(key: str) -> Path:
-    for d in _DIRS:
-        p = d / _FILES[key]
-        if p.exists():
-            return p
-    raise FileNotFoundError(f"OCV table {_FILES[key]} not found; run scripts/build_ocv_tables.py")
+def _resolve(chem: str):
+    """Parse 'CHEM[:variant]'. variant 'dischg' -> discharge-leg-only table,
+    otherwise the hysteresis-averaged 'mean' table. Returns (cache_key, filename)."""
+    base, _, variant = str(chem).partition(":")
+    key = _norm_chem(base)
+    variant = variant.strip().lower()
+    suffix = "_dischg" if variant == "dischg" else ""
+    return f"{key}:{variant or 'mean'}", f"ocv_{key}_25C{suffix}.csv"
 
 
 def load_ocv_table(chem: str) -> tuple[np.ndarray, np.ndarray]:
-    """Return (soc_grid, ocv_grid) for a chemistry; ocv_grid is monotone-increasing."""
-    key = _norm_chem(chem)
-    if key not in _CACHE:
-        df = pd.read_csv(_table_path(key))
+    """Return (soc_grid, ocv_grid); ocv_grid is monotone-increasing. ``chem`` may
+    carry a ':dischg' suffix to select the discharge-leg-only table."""
+    cache_key, fname = _resolve(chem)
+    if cache_key not in _CACHE:
+        path = next((d / fname for d in _DIRS if (d / fname).exists()), None)
+        if path is None:
+            raise FileNotFoundError(f"OCV table {fname} not found; run scripts/build_ocv_tables.py")
+        df = pd.read_csv(path)
         soc = df["soc"].to_numpy(dtype=float)
         ocv = df["ocv_V"].to_numpy(dtype=float)
         if not np.all(np.diff(ocv) > 0):
-            raise ValueError(f"OCV table for {key} is not strictly increasing")
-        _CACHE[key] = (soc, ocv)
-    return _CACHE[key]
+            raise ValueError(f"OCV table {fname} is not strictly increasing")
+        _CACHE[cache_key] = (soc, ocv)
+    return _CACHE[cache_key]
 
 
 def soc_from_voltage(V, chem: str):
