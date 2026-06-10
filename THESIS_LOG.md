@@ -53,3 +53,14 @@ PatchTST transfers best because it carries the least of it.
   the generalizable method must act at the representation level / use chemistry-aware
   features, not post-hoc correction. The open regime is zero/few target labels, since
   fine-tuning already solves the with-labels case.
+
+## 2026-06-09 — Stage 2 (shared-budget re-run; supersedes prior val-asymmetric run)
+
+- Fine-tuning reaches the within-target oracle; recal plateaus at ~42% (PAN→LG) / ~25% (LG→PAN).
+  Architecture flip holds: PatchTST best zero-shot, worst fine-tuned; LSTM/GRU best fine-tuned.
+- Data efficiency (honest, shared budget): fine-tune at 10% closes ~77% of the gap but is
+  HIGH-VARIANCE below ~20% (~5 drive cycles) — sample too small to early-stop reliably.
+  Reliable monotone gains from ~20% to the oracle.
+- RETRACTED: prior "recal worse than zero-shot at 5%, esp LG→PAN" — a small-pool artifact.
+  Corrected: low-fraction recal is high-variance but ~neutral-to-slightly-helpful; still plateaus.
+- Regime: ≤~3 cycles both unstable (recal more stable, caps low); ≥~5 cycles fine-tune wins to oracle.
