@@ -1,0 +1,5 @@
+direction,condition,target_chem,clamp_rate
+cross_A_train_PAN_test_LG,C2_ocv_mean,LG_HG2,0.0093
+cross_A_train_PAN_test_LG,C3_ocv_dischg,LG_HG2,0.0166
+cross_B_train_LG_test_PAN,C2_ocv_mean,PANASONIC_18650PF,0.0764
+cross_B_train_LG_test_PAN,C3_ocv_dischg,PANASONIC_18650PF,0.1034

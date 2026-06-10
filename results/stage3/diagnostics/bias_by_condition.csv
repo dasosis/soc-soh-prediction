@@ -1,0 +1,9 @@
+direction,condition,bias_mean,bias_std,mae_mean
+cross_A_train_PAN_test_LG,C1_baseline,0.05334,0.02297,0.07659
+cross_A_train_PAN_test_LG,C2_ocv_mean,0.05491,0.02103,0.07537
+cross_A_train_PAN_test_LG,C3_ocv_dischg,0.04112,0.01618,0.06876
+cross_A_train_PAN_test_LG,C4_coral,0.06321,0.01614,0.08978
+cross_B_train_LG_test_PAN,C1_baseline,-0.04518,0.01156,0.07357
+cross_B_train_LG_test_PAN,C2_ocv_mean,-0.04646,0.01238,0.07409
+cross_B_train_LG_test_PAN,C3_ocv_dischg,-0.02906,0.02199,0.07147
+cross_B_train_LG_test_PAN,C4_coral,-0.05294,0.00451,0.07698

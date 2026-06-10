@@ -1,0 +1,11 @@
+direction,model,zero_shot,ocv_mean,ocv_dischg,coral,recal_affine_plateau,finetune_oracle,pct_gap_closed
+cross_A_train_PAN_test_LG,gru,0.07648,0.07501,0.06771,0.08152,0.04923,0.0106,0.0223
+cross_A_train_PAN_test_LG,linear,0.08165,0.07601,0.07009,0.08707,0.06707,,
+cross_A_train_PAN_test_LG,lstm,0.0843,0.08439,0.0769,0.08112,0.05314,0.00985,-0.0012
+cross_A_train_PAN_test_LG,mlp,0.08242,0.08534,0.07171,0.07856,0.05055,,
+cross_A_train_PAN_test_LG,patchtst,0.05811,0.05608,0.05737,0.12063,0.04391,0.01836,0.0511
+cross_B_train_LG_test_PAN,gru,0.07357,0.07451,0.07115,0.06989,0.05575,0.01638,-0.0164
+cross_B_train_LG_test_PAN,linear,0.07366,0.07302,0.07392,0.09223,0.06533,,
+cross_B_train_LG_test_PAN,lstm,0.07009,0.07135,0.06902,0.07147,0.05603,0.01674,-0.0236
+cross_B_train_LG_test_PAN,mlp,0.08153,0.08033,0.07508,0.07098,0.06131,,
+cross_B_train_LG_test_PAN,patchtst,0.069,0.07123,0.06818,0.08033,0.05732,0.02445,-0.0501
