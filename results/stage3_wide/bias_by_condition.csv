@@ -1,0 +1,5 @@
+direction,condition,bias_mean,bias_std,mae_mean
+cross_A_train_PAN_test_LG,C2_ocv_mean,0.06266,0.01946,0.07937
+cross_A_train_PAN_test_LG,C4_coral,0.06186,0.01343,0.08754
+cross_B_train_LG_test_PAN,C2_ocv_mean,-0.05055,0.01085,0.07498
+cross_B_train_LG_test_PAN,C4_coral,-0.05388,0.00447,0.07585
