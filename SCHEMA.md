@@ -169,3 +169,14 @@ holds before training anything.
 - A new dataset → subclass `BaseLoader`, emit the contracted columns, done.
 - A new task (e.g. temperature estimation) → add a new canonical table + a
   validator rather than overloading an existing one.
+
+## Stage 3 WIDE — generality of the negative result (9 models, C2/C4)
+Added bilstm, cnn_bilstm_attn, tcn, transformer. Same pattern as the 5-model run, no exceptions:
+- C2 (OCV-mean) ~neutral vs zero-shot (cross_A: bilstm .083->.081, cnn .088->.088, tcn .090->.092,
+  transformer .081->.078); none approach recal (~.05). Bias unmoved.
+- C2 vs C4(CORAL): a WASH on these 4 — the catastrophic patchtst CORAL failure does NOT recur.
+  Refines S3-4: OCV does not systematically beat marginal alignment; NEITHER closes the
+  conditional chemistry gap (still consistent with #5).
+- cnn_bilstm_attn (literature workhorse) does NOT break the pattern.
+CONCLUSION (now across all 9 families): label-free OCV-referencing does not close the
+cross-chemistry SOC gap; a few target labels remain necessary. Robust negative result.
