@@ -287,6 +287,9 @@ def verify_c1(cfg):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/soc_stage3.yaml")
+    ap.add_argument("--out-dir", default="",
+                    help="Override cfg['out_dir'] (the full-sweep root). Empty = use the "
+                         "config's value. Smoke still appends '_smoke' to whatever this resolves to.")
     ap.add_argument("--smoke", action="store_true")
     ap.add_argument("--directions", default="")
     ap.add_argument("--models", default="")
@@ -296,6 +299,8 @@ def main():
     ap.add_argument("--diagnostics-only", action="store_true")
     args = ap.parse_args()
     cfg = load_config(args.config)
+    if args.out_dir:
+        cfg["out_dir"] = args.out_dir
 
     if args.verify_c1:
         return 0 if verify_c1(cfg) else 1

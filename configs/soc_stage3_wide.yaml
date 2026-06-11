@@ -1,0 +1,60 @@
+# Stage 3 WIDE — extend Stage 3 to the full 9-model roster for C2 + C4 ONLY.
+#
+# SEPARATE, NON-DESTRUCTIVE artifact. This config only adds the 4 models that
+# Stage 3 did not run {bilstm, cnn_bilstm_attn, tcn, transformer} for the two
+# label-free conditions C2_ocv_mean (headline) and C4_coral (foil). The other 5
+# models {linear, mlp, lstm, gru, patchtst} for C2/C4 already live in
+# results/stage3/; C1 + the within-dataset oracle for all 9 come from Stage 1.
+# Do NOT add C3 (already done on {lstm,gru,patchtst}).
+#
+# Full sweep -> runs/soc_stage3_wide/ ; smoke -> runs/soc_stage3_wide_smoke/.
+# Everything below mirrors configs/soc_stage3.yaml so C1==S1 invariants hold:
+# same window, same fixed TEST split (whole target), same source train/val carve,
+# source-only scaler, OCV channel appended UNSCALED.
+
+processed_dir: data/processed
+out_dir: runs/soc_stage3_wide
+stage1_summary: results/stage1/summary.csv
+stage2_summary: results/stage2/summary.csv
+
+features: [voltage_V, current_A, temperature_C]
+target: soc
+window: {length: 100, stride: 10}
+seeds: [0, 1, 2, 3, 4]
+
+# Source-model train/val carve — MUST match Stage 1/3 so the fixed test split is identical.
+source_train: {val_frac: 0.2, split_seed: 0}
+
+deep_defaults:
+  lr: 0.001
+  batch_size: 256
+  max_epochs: 50
+  patience: 8
+  grad_clip: 1.0
+  device: auto
+
+# The 4 models Stage 3 did not run. Hyperparameters copied verbatim from Stage 1
+# (configs/soc_stage1.yaml) so the wide rows are comparable to the S1 C1/oracle.
+models: [bilstm, cnn_bilstm_attn, tcn, transformer]
+model_overrides:
+  bilstm:          {hidden: 96, num_layers: 1}
+  cnn_bilstm_attn: {filters: 16, hidden: 64, dropout: 0.1}
+  tcn:             {channels: 32, levels: 3, kernel: 3, dropout: 0.1}
+  transformer:     {d_model: 64, nhead: 4, num_layers: 2, dim_feedforward: 128, dropout: 0.1}
+
+# Only the two label-free conditions still missing for these models. OCV channel UNSCALED.
+conditions: [C2_ocv_mean, C4_coral]
+
+coral: {eps: 1.0e-5}
+
+directions:
+  - {name: cross_A_train_PAN_test_LG, source_chem: PANASONIC_18650PF, target_chem: LG_HG2,
+     manifest: runs/soc_cross_dataset/fold_A_test_LG_HG2.json, oracle_exp: within_LG}
+  - {name: cross_B_train_LG_test_PAN, source_chem: LG_HG2, target_chem: PANASONIC_18650PF,
+     manifest: runs/soc_cross_dataset/fold_B_test_PANASONIC_18650PF.json, oracle_exp: within_PAN}
+
+smoke:
+  seeds: [0]
+  max_epochs: 2
+  max_windows_train: 1500
+  max_windows_eval: 800
