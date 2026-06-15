@@ -16,10 +16,17 @@ every loader, splitter, normalizer, and model obeys.
 | **SOC loaders: LG 18650HG2 + Panasonic 18650PF** | **done** |
 | SOH loaders (NASA / CALCE / Oxford) | not in this line of work |
 | Cross-dataset SOC split manifests | done |
-| Models (Stage 1) | not started |
+| Stage 1 — SOC model comparison (9 models × 5 seeds) | done — `results/stage1/` |
+| Stage 2 — fine-tuning data-efficiency ladder | done — `results/stage2/` |
+| Stage 3 — OCV-informed feature (5 models) + WIDE (9 models) | done — `results/stage3/`, `results/stage3_wide/` |
+| Thesis write-up | drafted — `chapters/` |
 
-The current focus is the **SOC cross-dataset generalization experiment**:
-train on one chemistry/manufacturer, test on the other.
+The thesis contribution is a **rigorous, generalization-first comparison** of SOC
+estimators across chemistries: train on one chemistry/manufacturer, test on the
+other. The headline finding is a robust **negative result** — label-free,
+chemistry-aware OCV referencing of loaded voltage does *not* close the
+cross-chemistry SOC gap; a few labeled target cycles remain necessary (Stage 3
+below; predictions and outcomes logged in [`THESIS_LOG.md`](THESIS_LOG.md)).
 
 ## Layout
 
@@ -39,9 +46,17 @@ scripts/
   build_soc_processed.py        raw -> data/processed/*.parquet (+ summary)
   validate_processed.py         assert processed tables obey SCHEMA.md
   build_crossdataset_splits.py  leave-one-dataset-out manifests -> runs/
+  build_ocv_tables.py           C/20 OCV(SOC) curves -> data/ocv/*.csv (Stage 3)
+  inventory_raw_ocv.py          audit raw files used to build the OCV tables
+  run_soc_stage1.py             Stage 1 — SOC model comparison
+  run_soc_stage2.py             Stage 2 — fine-tuning data-efficiency ladder
+  run_soc_stage3.py             Stage 3 — OCV-informed feature sweep
+  combine_stage3_wide.py        merge Stage 3 (5 models) + WIDE (9 models) tables
   make_bundle.py                portable zip for Colab / JarvisLabs
-tests/                          pytest suite (harness + both SOC loaders)
-configs/                        experiment configs
+tests/                          pytest suite (harness + SOC loaders + OCV feature)
+configs/                        experiment configs (one per stage)
+chapters/                       thesis write-up (per-chapter markdown + docx)
+results/                        committed stage results (summaries + diagnostics)
 data/raw/                       untouched downloads (git-ignored)
 data/processed/                 canonical parquet (git-ignored, regenerable)
 runs/ , artifacts/              manifests + bundles (git-ignored)
@@ -53,7 +68,7 @@ runs/ , artifacts/              manifests + bundles (git-ignored)
 python -m venv .venv && .venv\Scripts\activate   # Windows; use source on *nix
 pip install -e .
 pip install pytest
-pytest -q                                        # 21 passing tests, no data needed
+pytest -q                                        # 50 passing tests, no data needed
 ```
 
 ## SOC cross-dataset pipeline
@@ -182,7 +197,7 @@ reference, fraction 0 = zero-shot anchor), a headline 80%-gap-closure table, and
 per-fraction gap-share. Same Colab recipe as Stage 1 (the bundle already carries
 the processed tables + manifests; `git pull`, then run).
 
-## Stage 3 — OCV-informed feature (in progress)
+## Stage 3 — OCV-informed feature (done — negative result)
 
 A label-free, chemistry-aware feature: append `SOC_ocv = clamp(OCV_chem⁻¹(V))` as a
 4th input channel to (V, I, T), using each chemistry's measured 25 °C C/20 OCV(SOC)
@@ -220,5 +235,37 @@ Diagnostics (`diagnostics/`): `summary`, `bias_by_condition` (S3-2), `error_by_s
 (S3-5 low-SOC), `clamp_rate`, and `gapclose` (the money table — C1/C2/C3/C4 vs the
 S2 recal plateau and fine-tune oracle, with `pct_gap_closed`). Validation
 (`tests/test_ocv_feature.py`): recovery MAE (LG 0.015, Panasonic 0.055), monotone
-inverse + clamping, chemistry separation, window wiring. Smoke verified end-to-end;
-the full 5-seed sweep runs on Colab. Predictions pre-registered in `THESIS_LOG.md`.
+inverse + clamping, chemistry separation, window wiring. Predictions were
+pre-registered in [`THESIS_LOG.md`](THESIS_LOG.md) *before* any Stage 3 numbers.
+
+**Outcome (the full 5-seed sweep ran; results in `results/stage3/`).** The
+pre-registered predictions were **largely falsified** — an honest negative result.
+C2 (OCV-mean) sits ~neutral vs plain zero-shot and nowhere near the S2 recal
+plateau; loaded voltage ≠ OCV (the uncorrected IR/polarization drop) is the
+limiter, so the directional bias is *not* zeroed. The one positive sub-finding:
+discharge-leg OCV (C3) beats zero-shot in both directions and cuts bias,
+confirming the NCA-hysteresis mechanism — but still falls short of supervised
+recalibration. Bottom line: naive OCV referencing gives only a small label-free
+gain; **a few target labels (recal / fine-tune) remain necessary for chemistry
+transfer.**
+
+### Stage 3 WIDE — generality of the negative result (9 models)
+
+`configs/soc_stage3_wide.yaml` extends Stage 3 to the full 9-model roster for the
+two label-free conditions C2 (headline) + C4 (CORAL foil) only — a **separate,
+non-destructive** artifact that adds the 4 models Stage 3 did not run
+(`bilstm, cnn_bilstm_attn, tcn, transformer`); the other 5 and the C1/oracle rows
+are reused from `results/stage3/` and Stage 1. Window, fixed TEST split, source
+train/val carve, and source-only scaler all mirror Stage 3 so `C1 == S1` holds.
+
+```bash
+python scripts/run_soc_stage3.py --config configs/soc_stage3_wide.yaml --smoke   # -> runs/soc_stage3_wide_smoke/
+python scripts/run_soc_stage3.py --config configs/soc_stage3_wide.yaml           # full -> runs/soc_stage3_wide/
+python scripts/combine_stage3_wide.py    # merge S3 (5) + WIDE (4) + S1 -> results/stage3_wide/
+```
+
+Across all 9 model families the pattern holds: C2 is ~neutral vs zero-shot and
+never approaches the recal plateau, and C2-vs-C4 is a wash (the catastrophic
+PatchTST CORAL failure does not recur). The negative result is **robust** —
+label-free OCV referencing does not close the cross-chemistry SOC gap regardless
+of architecture. Full write-up in [`chapters/`](chapters/) (Chapter 7).
