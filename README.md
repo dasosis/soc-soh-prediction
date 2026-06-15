@@ -19,7 +19,7 @@ every loader, splitter, normalizer, and model obeys.
 | Stage 1 — SOC model comparison (9 models × 5 seeds) | done — `results/stage1/` |
 | Stage 2 — fine-tuning data-efficiency ladder | done — `results/stage2/` |
 | Stage 3 — OCV-informed feature (5 models) + WIDE (9 models) | done — `results/stage3/`, `results/stage3_wide/` |
-| Thesis write-up | drafted — `chapters/` |
+| Thesis write-up | drafted (kept locally, not in this repo) |
 
 The thesis contribution is a **rigorous, generalization-first comparison** of SOC
 estimators across chemistries: train on one chemistry/manufacturer, test on the
@@ -55,7 +55,6 @@ scripts/
   make_bundle.py                portable zip for Colab / JarvisLabs
 tests/                          pytest suite (harness + SOC loaders + OCV feature)
 configs/                        experiment configs (one per stage)
-chapters/                       thesis write-up (per-chapter markdown + docx)
 results/                        committed stage results (summaries + diagnostics)
 data/raw/                       untouched downloads (git-ignored)
 data/processed/                 canonical parquet (git-ignored, regenerable)
@@ -268,4 +267,4 @@ Across all 9 model families the pattern holds: C2 is ~neutral vs zero-shot and
 never approaches the recal plateau, and C2-vs-C4 is a wash (the catastrophic
 PatchTST CORAL failure does not recur). The negative result is **robust** —
 label-free OCV referencing does not close the cross-chemistry SOC gap regardless
-of architecture. Full write-up in [`chapters/`](chapters/) (Chapter 7).
+of architecture. Full write-up in the thesis (Chapter 7, kept locally).
